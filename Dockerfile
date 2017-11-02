@@ -24,4 +24,4 @@ COPY ena-ascp.sh /usr/local/bin/ena-ascp.sh
 
 WORKDIR /data
 
-CMD ena-dl
+CMD ["ena-dl", "--help"]
