@@ -154,7 +154,7 @@ if __name__ == '__main__':
                         help='Query is an experiment accession.')
     group1.add_argument('--is_run', action='store_true', default=False,
                         help='Query is a run accession.')
-    group1.add_argument('--json', action='store_true', default=False,
+    group1.add_argument('--nextflow', action='store_true', default=False,
                         help='Output instrument model and paired status.')
     group1.add_argument('--debug', action='store_true', default=False,
                         help='Skip downloads, print what will be downloaded.')
@@ -177,7 +177,8 @@ if __name__ == '__main__':
             query = 'study_accession={0}'.format(args.query)
 
     ena_data = get_run_info(query)
-    outdir = '{0}'.format(args.output)
+
+    outdir = os.getcwd() if args.output == './' else '{0}'.format(args.output)
     log_stdout('Query: {0}'.format(args.query), quiet=args.quiet)
     log_stdout('Total Runs To Download: {0}'.format(
         len(ena_data)),
@@ -188,6 +189,8 @@ if __name__ == '__main__':
     runs = None
     is_miseq = False
     is_paired = False
+    r1 = None
+    r2 = None
     if args.group_by_experiment or args.group_by_sample:
         runs = {}
     for run in ena_data:
@@ -243,14 +246,14 @@ if __name__ == '__main__':
             else:
                 log_stdout("\tMerging single end runs to experiment...",
                            quiet=args.quiet)
-                fastq = '{0}/{1}.fastq.gz'.format(outdir, name)
-                merge_runs(vals['r1'], fastq)
+                r1 = '{0}/{1}.fastq.gz'.format(outdir, name)
+                merge_runs(vals['r1'], r1)
         write_json(runs, "{0}/ena-run-mergers.json".format(outdir))
     write_json(ena_data, "{0}/ena-run-info.json".format(outdir))
 
-    if args.json:
-        # Assumes only a single experiment was downloaded! Mainly used for
-        # Staphopia pipeline.
-        print(json.dumps({
-            'is_miseq': is_miseq, 'success': True, 'is_paired': is_paired
-        }))
+    if args.nextflow:
+        # Assumes grouped by single experiment/sample was downloaded! Mainly
+        # used for Staphopia Nextflow pipeline.
+        fq2 = "--fq2 {0}".format(r2) if r2 else ""
+        is_miseq = "--is_miseq" if is_miseq else ""
+        print("--fq1 {0} {1} {2}".format(r1, fq2, is_miseq))
