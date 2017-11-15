@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 from __future__ import print_function
 import json
@@ -45,7 +45,7 @@ def md5sum(file):
     stdout, stderr = run_command(['md5sum', file])
     if stdout:
         md5sum, filename = stdout.split()
-        return md5sum
+        return md5sum.decode("utf-8")
     else:
         return None
 

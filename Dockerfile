@@ -4,10 +4,10 @@ MAINTAINER robbie.petit@gmail.com
 # Aspera Connect
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
-        python-dev \
-        python-pip \
+        python3-dev \
+        python3-pip \
         wget && \
-    pip install requests
+    pip3 install requests
 
 RUN mkdir /aspera /data && \
     cd /tmp && \
