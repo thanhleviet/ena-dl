@@ -196,11 +196,30 @@ if __name__ == '__main__':
     for run in ena_data:
         log_stdout('\tWorking on run {0}...'.format(run['run_accession']),
                    quiet=args.quiet)
+
         aspera = run['fastq_aspera'].split(';')
         ftp = run['fastq_ftp'].split(';')
         md5 = run['fastq_md5'].split(';')
+        is_paired = True if run['library_layout'] == 'PAIRED' else False
 
         for i in range(len(aspera)):
+            is_r1 = False
+            is_r2 = False
+            # If run is paired only include *_1.fastq and *_2.fastq, rarely a
+            # run can have 3 files.
+            # Example:ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR114/007/ERR1143237
+            if is_paired:
+                if aspera[i].endswith('_2.fastq.gz'):
+                    # Example: ERR1143237_2.fastq.gz
+                    is_r2 = True
+                elif aspera[i].endswith('_1.fastq.gz'):
+                    # Example: ERR1143237_1.fastq.gz
+                    pass
+                else:
+                    # Example: ERR1143237.fastq.gz
+                    # Not apart of the paired end read, so skip this file.
+                    continue
+
             # Download Run
             if md5[i] and not args.debug:
                 success, fastq = download_fastq(aspera[i], ftp[i], outdir,
@@ -220,7 +239,7 @@ if __name__ == '__main__':
                             if run['library_layout'] == 'PAIRED':
                                 is_paired = True
 
-                        if i:
+                        if is_r2:
                             runs[name]['r2'].append(fastq)
                         else:
                             runs[name]['r1'].append(fastq)
