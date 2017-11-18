@@ -101,7 +101,6 @@ def merge_runs(runs, output):
         for run in runs:
             cat_cmd.append(run)
             rm_cmd.append(run)
-        print(cat_cmd, output)
         run_command(cat_cmd, stdout=output)
         run_command(rm_cmd)
     else:
