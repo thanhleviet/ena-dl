@@ -42,10 +42,13 @@ def run_command(cmd, stdout=subprocess.PIPE):
 
 def md5sum(file):
     """Return the MD5SUM of an input file."""
-    stdout, stderr = run_command(['md5sum', file])
-    if stdout:
-        md5sum, filename = stdout.split()
-        return md5sum.decode("utf-8")
+    if os.path.exists(file):
+        stdout, stderr = run_command(['md5sum', file])
+        if stdout:
+            md5sum, filename = stdout.split()
+            return md5sum.decode("utf-8")
+        else:
+            return None
     else:
         return None
 
@@ -69,9 +72,11 @@ def download_fastq(fasp, ftp, outdir, md5, max_retry=10):
             else:
                 run_command(['ena-ascp.sh', 'era-fasp@{0}'.format(fasp),
                              outdir])
+
             if md5sum(fastq) != md5:
                 retries += 1
-                os.remove(fastq)
+                if os.path.exists(fastq):
+                    os.remove(fastq)
                 if retries > max_retry:
                     if not use_ftp:
                         use_ftp = True
