@@ -33,8 +33,9 @@ def log_stdout(message, quiet=False):
         print(message, file=sys.stdout)
 
 
-def run_command(cmd, stdout=subprocess.PIPE):
+def run_command(cmd, stdout=False):
     """Execute a single command and return STDOUT and STDERR."""
+    stdout = open(stdout, 'w') if stdout else subprocess.PIPE
     p = subprocess.Popen(cmd, stdout=stdout)
 
     return p.communicate()
@@ -100,6 +101,7 @@ def merge_runs(runs, output):
         for run in runs:
             cat_cmd.append(run)
             rm_cmd.append(run)
+        print(cat_cmd, output)
         run_command(cat_cmd, stdout=output)
         run_command(rm_cmd)
     else:
