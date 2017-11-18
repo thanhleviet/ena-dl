@@ -20,8 +20,7 @@ ENV ASCP /aspera/bin/ascp
 ENV ASCP_KEY /aspera/etc/asperaweb_id_dsa.openssh
 
 COPY ena-dl.py /usr/local/bin/ena-dl
-COPY ena-ascp.sh /usr/local/bin/ena-ascp.sh
-RUN chmod 755 /usr/local/bin/ena-dl /usr/local/bin/ena-ascp.sh
+RUN chmod 755 /usr/local/bin/ena-dl
 
 WORKDIR /data
 

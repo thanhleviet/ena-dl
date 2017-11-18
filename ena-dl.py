@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-from __future__ import print_function
+import logging
 import json
 import os
 import subprocess
@@ -28,17 +28,52 @@ FIELDS = [
 ]
 
 
-def log_stdout(message, quiet=False):
-    if not quiet:
-        print(message, file=sys.stdout)
+def output_handler(output, redirect='>'):
+    if output:
+        return [open(output, 'w'), '{0} {1}'.format(redirect, output)]
+    else:
+        return [subprocess.PIPE, '']
 
 
-def run_command(cmd, stdout=False):
+def onfinish_handler(cmd, out, err, returncode):
+    out = '\n{0}'.format(out) if out else ''
+    err = '\n{0}'.format(err) if err else ''
+    if returncode != 0:
+        logging.error('COMMAND: {0}'.format(cmd))
+        logging.error('STDOUT: {0}'.format(out))
+        logging.error('STDERR: {0}'.format(err))
+        logging.error('END\n'.format(err))
+        raise RuntimeError(err)
+    else:
+        logging.info('COMMAND: {0}'.format(cmd))
+        logging.info('STDOUT: {0}'.format(out))
+        logging.info('STDERR: {0}'.format(err))
+        logging.info('END\n'.format(err))
+        return [out, err]
+
+
+def byte_to_string(b):
+    if b:
+        return b.decode("utf-8")
+    else:
+        return ''
+
+
+def run_command(cmd, cwd=os.getcwd(), stdout=False, stderr=False):
     """Execute a single command and return STDOUT and STDERR."""
-    stdout = open(stdout, 'w') if stdout else subprocess.PIPE
-    p = subprocess.Popen(cmd, stdout=stdout)
+    stdout, stdout_str = output_handler(stdout)
+    stderr, stderr_str = output_handler(stderr, redirect='2>')
+    p = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, cwd=cwd)
 
-    return p.communicate()
+    out, err = p.communicate()
+    return onfinish_handler(
+        '{0} {1} {2}'.format(' '.join(cmd), stdout_str, stderr_str),
+        byte_to_string(out), byte_to_string(err), p.returncode
+    )
+
+
+def log_stdout(message, quiet=False):
+    logging.info(message)
 
 
 def md5sum(file):
@@ -47,7 +82,7 @@ def md5sum(file):
         stdout, stderr = run_command(['md5sum', file])
         if stdout:
             md5sum, filename = stdout.split()
-            return md5sum.decode("utf-8")
+            return md5sum
         else:
             return None
     else:
@@ -71,8 +106,9 @@ def download_fastq(fasp, ftp, outdir, md5, max_retry=10):
             if use_ftp:
                 run_command(['wget', '-O', fastq, ftp])
             else:
-                run_command(['ena-ascp.sh', 'era-fasp@{0}'.format(fasp),
-                             outdir])
+                run_command([os.environ['ASCP'], '-QT', '-l', '300m',
+                            '-P33001', '-i', os.environ['ASCP_KEY'],
+                            'era-fasp@{0}'.format(fasp), outdir])
 
             if md5sum(fastq) != md5:
                 retries += 1
@@ -165,6 +201,11 @@ if __name__ == '__main__':
                         help='Skip downloads, print what will be downloaded.')
 
     args = parser.parse_args()
+    if args.quiet:
+        logging.basicConfig(stream=sys.stdout, level=logging.ERROR)
+    else:
+        logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+
     query = None
     if args.is_study:
         query = 'study_accession={0}'.format(args.query)
@@ -185,10 +226,7 @@ if __name__ == '__main__':
 
     outdir = os.getcwd() if args.output == './' else '{0}'.format(args.output)
     log_stdout('Query: {0}'.format(args.query), quiet=args.quiet)
-    log_stdout('Total Runs To Download: {0}'.format(
-        len(ena_data)),
-        quiet=args.quiet
-    )
+    log_stdout('Total Runs To Download: {0}'.format(len(ena_data)))
 
     # FASTQ file names
     runs = None
@@ -199,14 +237,12 @@ if __name__ == '__main__':
     if args.group_by_experiment or args.group_by_sample:
         runs = {}
     for run in ena_data:
-        log_stdout('\tWorking on run {0}...'.format(run['run_accession']),
-                   quiet=args.quiet)
+        log_stdout('\tWorking on run {0}...'.format(run['run_accession']))
 
         aspera = run['fastq_aspera'].split(';')
         ftp = run['fastq_ftp'].split(';')
         md5 = run['fastq_md5'].split(';')
         is_paired = True if run['library_layout'] == 'PAIRED' else False
-
         for i in range(len(aspera)):
             is_r1 = False
             is_r2 = False
@@ -222,14 +258,19 @@ if __name__ == '__main__':
                     pass
                 else:
                     # Example: ERR1143237.fastq.gz
-                    # Not apart of the paired end read, so skip this file.
-                    continue
+                    # Not apart of the paired end read, so skip this file. Or,
+                    # its the only fastq file, and its not a paired
+                    obs_fq = os.path.basename(aspera[i])
+                    exp_fq = '{0}.fastq.gz'.format(run['run_accession'])
+                    if (len(aspera) == 1 and obs_fq == exp_fq):
+                        is_paired = False
+                    else:
+                        continue
 
             # Download Run
             if md5[i] and not args.debug:
                 success, fastq = download_fastq(aspera[i], ftp[i], outdir,
                                                 md5[i])
-
                 if success:
                     if args.group_by_experiment or args.group_by_sample:
                         name = run["sample_accession"]
@@ -241,8 +282,6 @@ if __name__ == '__main__':
 
                             if 'miseq' in run['instrument_model'].lower():
                                 is_miseq = True
-                            if run['library_layout'] == 'PAIRED':
-                                is_paired = True
 
                         if is_r2:
                             runs[name]['r2'].append(fastq)
@@ -261,15 +300,20 @@ if __name__ == '__main__':
         for name, vals in runs.items():
             if len(vals['r1']) and len(vals['r2']):
                 # Not all runs labled as paired are actually paired...
-                log_stdout("\tMerging paired end runs to {0}...".format(name),
-                           quiet=args.quiet)
-                r1 = '{0}/{1}_R1.fastq.gz'.format(outdir, name)
-                r2 = '{0}/{1}_R2.fastq.gz'.format(outdir, name)
-                merge_runs(vals['r1'], r1)
-                merge_runs(vals['r2'], r2)
+                if len(vals['r1']) == len(vals['r2']):
+                    log_stdout(
+                        "\tMerging paired end runs to {0}...".format(name)
+                    )
+                    r1 = '{0}/{1}_R1.fastq.gz'.format(outdir, name)
+                    r2 = '{0}/{1}_R2.fastq.gz'.format(outdir, name)
+                    merge_runs(vals['r1'], r1)
+                    merge_runs(vals['r2'], r2)
+                else:
+                    log_stdout("\tMerging single end runs to experiment...")
+                    r1 = '{0}/{1}.fastq.gz'.format(outdir, name)
+                    merge_runs(vals['r1'], r1)
             else:
-                log_stdout("\tMerging single end runs to experiment...",
-                           quiet=args.quiet)
+                log_stdout("\tMerging single end runs to experiment...")
                 r1 = '{0}/{1}.fastq.gz'.format(outdir, name)
                 merge_runs(vals['r1'], r1)
         write_json(runs, "{0}/ena-run-mergers.json".format(outdir))
