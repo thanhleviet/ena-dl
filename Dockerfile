@@ -22,6 +22,15 @@ ENV ASCP_KEY /aspera/etc/asperaweb_id_dsa.openssh
 COPY ena-dl.py /usr/local/bin/ena-dl
 RUN chmod 755 /usr/local/bin/ena-dl
 
+# Add user biodocker with password biodocker
+# https://github.com/BioContainers/containers/blob/master/biodocker/Dockerfile
+RUN groupadd fuse \
+    && useradd --create-home --shell /bin/bash --user-group --uid 1000 --groups sudo,fuse biodocker && \
+    echo `echo "biodocker\nbiodocker\n" | passwd biodocker`
+
+# Change user
+USER biodocker
+
 WORKDIR /data
 
 CMD ["ena-dl", "--help"]
