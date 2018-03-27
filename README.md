@@ -1,5 +1,6 @@
 # ena-dl
 Download FASTQ files from ENA
+A fork of https://github.com/rpetit3/ena-dl
 
 # Run with docker
 
